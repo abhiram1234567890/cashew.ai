@@ -64,6 +64,19 @@ export async function handleChat(req, apiKey) {
   if (!recent.length || !recent.every(isMessage) || recent.at(-1).role !== 'user')
     return reply({error:'Include a question.'}, 400);
   const messages = recent.map(m => ({role:m.role, content:m.content.slice(0,60000)}));
+  const images = body.images ?? [];
+  if (!Array.isArray(images) || images.length > 3)
+    return reply({error:'Attach up to three images per message.'}, 400);
+  if (images.length) {
+    if (model.decision) return reply({error:'Select a chat model for image questions.'}, 400);
+    // Only accept embedded raster images. The provider never needs to fetch a user-supplied URL.
+    const jpeg = /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/;
+    if (!images.every(image => typeof image === 'string' && image.length <= 1000000 && jpeg.test(image)))
+      return reply({error:'Send a smaller image using the attachment button.'}, 400);
+    const last = messages.at(-1);
+    last.content = [{type:'text',text:last.content},
+      ...images.map(url => ({type:'image_url',image_url:{url}}))];
+  }
   const key = apiKey?.trim();
   if (!key) return reply({error:'The site owner needs to configure APINEX_API_KEY before models can answer.'}, 503);
 
