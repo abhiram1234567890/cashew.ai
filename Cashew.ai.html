@@ -256,7 +256,7 @@ async function respond(){
     if(!response.ok)throw new Error(data.error||'The chat service is unavailable');
     ai.content=data.text;
   }catch(e){
-    if(!ai.content)ai.content=(e?.name==='AbortError')?'Stopped.':'Something went wrong: '+((e&&e.message)||'request failed')+'. Try sending again.';
+    if(!ai.content)ai.content=e?.name==='AbortError'?'Stopped.':(e?.message||'The chat request failed.');
   }
   ctrl=null;setBusy(false);
   el.querySelector('.bub').innerHTML=md(ai.content)+'<div class="acts"><button data-cp>Copy</button><button data-rg>Retry</button></div>';

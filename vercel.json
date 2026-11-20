@@ -4,5 +4,10 @@
       "source": "/",
       "destination": "/Cashew.ai.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/chat.mjs": {
+      "maxDuration": 150
+    }
+  }
 }
