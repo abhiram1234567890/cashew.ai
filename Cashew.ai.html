@@ -134,8 +134,7 @@ const ICON_STOP='<svg width="14" height="14" viewBox="0 0 24 24" fill="currentCo
 const LOGO='<div class="logo av"><svg aria-hidden="true"><use href="#cashew"/></svg></div>';
 const greet=()=>{const h=new Date().getHours();return (h<5?'Burning the midnight oil':h<12?'Good morning':h<18?'Good afternoon':'Good evening')+'. What are we cracking open?'};
 const historyKey='cashew.guest.chats.v1';
-const chatUrl='https://keexixaliovbjuseknzc.supabase.co/functions/v1/chat';
-const publicKey='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlZXhpeGFsaW92Ymp1c2VrbnpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMDgwOTAsImV4cCI6MjExMDY4NDA5MH0.uKucAkW1gEgq7kxmS446wjzpsLkK1EYK8Yi25PM44zg';
+const chatUrl='/api/chat';
 let chats=loadChats(),cur=null,pending=[],busy=false,ctrl=null;
 const picker=$('modelPicker');
 for(const model of models)picker.add(new Option(model.name,model.id));
@@ -251,7 +250,7 @@ async function respond(){
     if((last.files||[]).some(a=>a.kind==='image'))toast('Image input is unavailable for this chat.');
     ctrl=new AbortController();
     const response=await fetch(chatUrl,{method:'POST',credentials:'omit',signal:ctrl.signal,
-      headers:{apikey:publicKey,Authorization:'Bearer '+publicKey,'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({messages:input,model:picker.value})});
     const data=await response.json();
     if(!response.ok)throw new Error(data.error||'The chat service is unavailable');
