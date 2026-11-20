@@ -108,6 +108,7 @@ textarea::placeholder{color:var(--mute)}
 .pbtn{background:var(--acc);color:var(--accink);margin-top:4px}.pbtn:disabled{opacity:.5}
 .fmsg{font-size:13px;min-height:20px;margin:4px 0 8px;color:var(--mute)}.fmsg.err{color:#c62828}
 :root[data-theme=dark] .fmsg.err{color:#ff8a80}@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .fmsg.err{color:#ff8a80}}
+#emailVerify{margin-top:18px}#emailVerify summary{cursor:pointer}#verifyForm{margin-top:16px}
 .acct{display:flex;align-items:center;gap:10px;padding:10px 4px 6px;border-top:1px solid var(--line);margin-top:8px}
 .av2{width:34px;height:34px;border-radius:50%;background:#C8873F;color:#fff;display:grid;place-items:center;font-weight:600;flex:none}
 .who{min-width:0;flex:1;line-height:1.3}.who b,.who small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.who small{color:var(--mute);font-size:12px}
@@ -145,9 +146,15 @@ textarea::placeholder{color:var(--mute)}
 <button class="jump" id="jump" hidden aria-label="Scroll to latest message"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
 </main>
 </div>
-<div class="gate" id="auth" role="dialog" aria-modal="true" aria-labelledby="atitle"><div class="card"><div class="logo"><svg aria-hidden="true"><use href="#cashew"/></svg></div><h2 id="atitle">Welcome to Cashew.ai</h2><p>Enter your email to receive a sign-in link. New here? The link also creates your account.</p>
+<div class="gate" id="auth" role="dialog" aria-modal="true" aria-labelledby="atitle"><div class="card"><div class="logo"><svg aria-hidden="true"><use href="#cashew"/></svg></div><h2 id="atitle">Welcome to Cashew.ai</h2><p>Sign in or create an account with your email.</p>
 <form id="af"><div class="fld"><label for="em">Email</label><input id="em" type="email" autocomplete="email" inputmode="email" required placeholder="you@example.com"></div>
-<div class="fmsg" id="amsg" role="alert"></div><button class="pbtn" id="asub2" type="submit">Email me a sign-in link</button></form></div></div>
+<div class="fmsg" id="amsg" role="alert"></div><button class="pbtn" id="asub2" type="submit">Send sign-in email</button></form>
+<details id="emailVerify"><summary>I have a sign-in email</summary>
+<form id="verifyForm">
+<p>Copy the link from your latest Cashew.ai email without opening it, then paste it here. If the email shows a code, enter it instead.</p>
+<div class="fld"><label for="emailProof">Email link or code</label><input id="emailProof" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required></div>
+<div class="fmsg" id="verifyMsg" role="status"></div><button class="pbtn" type="submit">Verify and continue</button>
+</form></details></div></div>
 <div class="gate" id="nameDlg" hidden role="dialog" aria-modal="true" aria-labelledby="ntitle"><div class="card"><div class="logo"><svg aria-hidden="true"><use href="#cashew"/></svg></div><h2 id="ntitle">One last thing</h2><p>What should we call you?</p>
 <form id="nf" novalidate><div class="fld"><label for="nm">Your name</label><input id="nm" type="text" autocomplete="name" maxlength="60" required placeholder="e.g. Abhiram"></div><div class="fmsg err" id="nerr" role="alert"></div><button class="pbtn" type="submit">Continue</button></form></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -158,7 +165,8 @@ const ICON_STOP='<svg width="14" height="14" viewBox="0 0 24 24" fill="currentCo
 const LOGO='<div class="logo av"><svg aria-hidden="true"><use href="#cashew"/></svg></div>';
 const greet=()=>{const h=new Date().getHours();const n=profile&&profile.name?', '+esc(profile.name.split(' ')[0]):'';return (h<5?'Burning the midnight oil':h<12?'Good morning':h<18?'Good afternoon':'Good evening')+n+'. What are we cracking open?'};
 let user=null,profile=null,mode='default',chats=[],cur=null,pending=[],busy=false,ctrl=null,sample=null;
-const sb=supabase.createClient('https://keexixaliovbjuseknzc.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlZXhpeGFsaW92Ymp1c2VrbnpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMDgwOTAsImV4cCI6MjExMDY4NDA5MH0.uKucAkW1gEgq7kxmS446wjzpsLkK1EYK8Yi25PM44zg');
+const authOrigin='https://keexixaliovbjuseknzc.supabase.co';
+const sb=supabase.createClient(authOrigin,'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlZXhpeGFsaW92Ymp1c2VrbnpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMDgwOTAsImV4cCI6MjExMDY4NDA5MH0.uKucAkW1gEgq7kxmS446wjzpsLkK1EYK8Yi25PM44zg');
 let saveT;
 function save(){clearTimeout(saveT);saveT=setTimeout(async()=>{if(!user)return;const data=chats.map(c=>({id:c.id,title:c.title,msgs:c.msgs.map(m=>({role:m.role,content:m.content,atts:(m.atts||[]).map(a=>({name:a.name,kind:a.kind}))}))}));const {error}=await sb.from('profiles').update({chats:data,updated_at:new Date().toISOString()}).eq('id',user.id);if(error)toast('Could not sync chats')},600)}
 function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2000)}
@@ -285,6 +293,18 @@ try{claude.use('dictation').then(d=>{if(!d)return;dict=d;$('mic').hidden=false;d
 $('mic').onclick=()=>{if(dict)$('mic').classList.contains('rec')?dict.stop():dict.start().catch(()=>toast('Microphone unavailable'))};
 
 function fmsg(t,err){const e=$('amsg');e.textContent=t;e.className='fmsg'+(err?' err':'')}
+let resendAfter=0;
+function waitToResend(seconds){
+  const button=$('asub2');
+  resendAfter=Date.now()+seconds*1000;
+  function update(){
+    const left=Math.ceil((resendAfter-Date.now())/1000);
+    button.disabled=left>0;
+    button.textContent=left>0?'Resend in '+left+'s':'Send sign-in email';
+    if(left>0)setTimeout(update,1000);
+  }
+  update();
+}
 $('af').onsubmit=async e=>{
   e.preventDefault();
   const button=$('asub2');
@@ -296,14 +316,63 @@ $('af').onsubmit=async e=>{
   try{
     const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:true,emailRedirectTo}});
     if(error?.status===429){
-      fmsg('Please wait a minute before requesting another link.',true);
+      const retry=error.message.match(/after (\d+) seconds?/i);
+      if(retry){
+        waitToResend(Math.max(1,Number(retry[1])));
+        fmsg('Use the latest email in your inbox or wait to request another.',true);
+      }else{
+        fmsg('Email delivery has reached its limit. Use your latest unused email or try again later.',true);
+      }
     }else if(error){
-      fmsg('Could not send a sign-in link. Try again shortly.',true);
+      fmsg(error.code==='email_address_not_authorized'?'Email delivery is restricted for this site. Contact the site owner.':'Could not send the email. Please try again later.',true);
     }else{
-      fmsg('Check your inbox and open the sign-in link to continue.');
+      fmsg('Check your inbox and spam folder. Use your latest email below.');
+      $('emailVerify').open=true;
+      $('emailProof').focus();
+      waitToResend(60);
     }
   }catch{
     fmsg('Could not send a sign-in link. Try again shortly.',true);
+  }finally{
+    button.disabled=Date.now()<resendAfter;
+  }
+};
+$('verifyForm').onsubmit=async event=>{
+  event.preventDefault();
+  const form=event.currentTarget;
+  const button=form.querySelector('button');
+  if(button.disabled)return;
+  const field=$('emailProof');
+  const status=$('verifyMsg');
+  const proof=field.value.trim();
+  let verification;
+  if(/^\d{6,10}$/.test(proof)){
+    if(!$('em').reportValidity())return;
+    verification={type:'email',email:$('em').value.trim(),token:proof};
+  }else{
+    let url;
+    try{url=new URL(proof)}catch{}
+    const token=url?.searchParams.get('token');
+    if(url?.origin!==authOrigin||url.pathname!=='/auth/v1/verify'||!token||
+       !['signup','magiclink','email'].includes(url.searchParams.get('type'))){
+      status.textContent='Paste the original verification link from your Cashew.ai email, or enter its code.';
+      return;
+    }
+    verification={type:'email',token_hash:token};
+  }
+  button.disabled=true;
+  status.textContent='Verifying…';
+  try{
+    const {data,error}=await sb.auth.verifyOtp(verification);
+    if(error||!data.session){
+      status.textContent=error?.status===429?'Too many attempts. Please wait before trying again.':'This email link or code could not be verified. Use the latest unused one.';
+      return;
+    }
+    form.reset();
+    status.textContent='';
+    $('emailVerify').open=false;
+  }catch{
+    status.textContent='Could not reach Cashew.ai. Check your connection and try again.';
   }finally{
     button.disabled=false;
   }
