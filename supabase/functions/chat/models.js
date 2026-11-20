@@ -11,12 +11,4 @@ export const models = [
   { id: 'free/deepseek-v4-pro-0813', name: 'DeepSeek V4 Pro 0813' },
   { id: 'free/gpt-6-luna', name: 'GPT-6 Luna' },
   { id: 'free/jev-1.13', name: 'JEV 1.13 (yes/no decisions)', decision: true },
-  { id: 'free/deepseek-v4-flash-0731', name: 'DeepSeek V4 Flash 0731' },
-  { id: 'free/glm-5.3', name: 'GLM 5.3' },
-  { id: 'free/mimo-v2.6-flash', name: 'MiMo V2.6 Flash' },
-  { id: 'free/minimax-m3', name: 'MiniMax M3' },
-  { id: 'free/claude-sonnet-4.6', name: 'Claude Sonnet 4.6' },
-  { id: 'free/claude-opus-4.6', name: 'Claude Opus 4.6' },
-  { id: 'free/gemini-3.1-pro', name: 'Gemini 3.1 Pro' },
-  { id: 'free/kimi-k2.8', name: 'Kimi K2.8' },
 ];
