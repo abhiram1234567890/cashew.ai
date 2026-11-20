@@ -88,6 +88,8 @@ textarea::placeholder{color:var(--mute)}
 .itw:hover .del,.del:focus-visible{opacity:1}.del:hover{background:var(--line);color:var(--ink)}
 .tools{display:flex;align-items:center;gap:6px}
 .model-picker{font:inherit;font-size:14px;color:var(--ink);background:var(--surf);border:1px solid var(--line);border-radius:10px;min-height:36px;max-width:min(48vw,250px);padding:5px 8px}
+#voiceStatus{color:var(--mute);font-size:13px;overflow-wrap:anywhere}
+#voiceStatus:not(:empty){margin:4px 0 8px}
 #mic.rec{background:#C8873F;color:#fff;animation:pulse 1.2s infinite}
 @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(200,135,63,.25)}}
 .jump{position:absolute;left:50%;bottom:132px;transform:translateX(-50%);width:40px;height:40px;border-radius:50%;background:var(--surf);border:1px solid var(--line);box-shadow:var(--sh);display:grid;place-items:center}
@@ -114,8 +116,9 @@ textarea::placeholder{color:var(--mute)}
     <div class="box" id="box">
       <div class="atts" id="atts" style="justify-content:flex-start"></div>
       <textarea id="ta" rows="1" placeholder="Message Cashew.ai…" aria-label="Message"></textarea>
+      <div id="voiceStatus" role="status"></div>
       <div class="row">
-        <div class="tools"><button class="ico" id="attach" aria-label="Attach photos or files"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 11-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/></svg></button><button class="ico" id="mic" hidden aria-label="Dictate message" aria-pressed="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><select class="model-picker" id="modelPicker" aria-label="AI model"></select></div>
+        <div class="tools"><button class="ico" id="attach" aria-label="Attach photos or files"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 11-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/></svg></button><button class="ico" id="mic" title="Start voice typing" aria-label="Start voice typing" aria-describedby="voiceStatus" aria-pressed="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><select class="model-picker" id="modelPicker" aria-label="AI model"></select></div>
         <button class="send" id="send" aria-label="Send" disabled></button>
       </div>
       <input type="file" id="file" multiple hidden accept="image/*,.txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.log,.xml,.yml,.yaml">
@@ -215,7 +218,7 @@ function bottom(){const s=$('scroll');s.scrollTop=s.scrollHeight}
 function setBusy(b){busy=b;$('send').innerHTML=b?ICON_STOP:ICON_SEND;upd()}
 function upd(){$('send').disabled=!busy&&!$('ta').value.trim()&&!pending.length}
 function renderPending(){$('atts').innerHTML=pending.map((a,i)=>attHTML(a,true,i)).join('');$('atts').style.display=pending.length?'flex':'none'}
-function newChat(){cur=null;pending=[];renderPending();renderChat();$('ta').focus();$('side').classList.remove('open')}
+function newChat(){cancelVoice();cur=null;pending=[];renderPending();renderChat();$('ta').focus();$('side').classList.remove('open')}
 
 async function addFiles(list){
   for(const f of list){
@@ -228,6 +231,7 @@ async function addFiles(list){
 async function ask(){
   const text=$('ta').value.trim();
   if(!text&&!pending.length)return;
+  cancelVoice();
   if(!cur){cur={id:Date.now()+'',title:(text||pending[0].name).slice(0,40),msgs:[]};chats.unshift(cur)}
   const atts=pending;pending=[];renderPending();
   cur.msgs.push({role:'user',content:text||'Please look at what I attached.',atts,files:atts});
@@ -275,8 +279,8 @@ const box=$('box');
 $('newBtn').onclick=newChat;
 $('menu').onclick=()=>{const s=$('side');if(innerWidth>760){s.style.marginLeft=s.style.marginLeft?'':'-273px'}else s.classList.toggle('open')};
 $('srch').oninput=renderHist;
-$('hist').onclick=e=>{const d=e.target.closest('[data-del]');if(d){const id=d.dataset.del;chats=chats.filter(c=>c.id!==id);if(cur&&cur.id===id)cur=null;save();renderChat();toast('Chat deleted');return}
-  const b=e.target.closest('[data-id]');if(b){cur=chats.find(c=>c.id===b.dataset.id);renderChat();$('side').classList.remove('open')}};
+$('hist').onclick=e=>{const d=e.target.closest('[data-del]');if(d){const id=d.dataset.del;chats=chats.filter(c=>c.id!==id);if(cur&&cur.id===id){cancelVoice();cur=null}save();renderChat();toast('Chat deleted');return}
+  const b=e.target.closest('[data-id]');if(b){cancelVoice();cur=chats.find(c=>c.id===b.dataset.id);renderChat();$('side').classList.remove('open')}};
 $('clear').onclick=()=>{chats=[];save();newChat();toast('History cleared')};
 $('theme').onclick=()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;r.dataset.theme=dark?'light':'dark'};
 $('feed').onclick=e=>{
@@ -287,9 +291,94 @@ $('feed').onclick=e=>{
 };
 $('scroll').onscroll=()=>{const x=$('scroll');$('jump').hidden=x.scrollHeight-x.scrollTop-x.clientHeight<200};
 $('jump').onclick=bottom;
-let dict=null;
-try{claude.use('dictation').then(d=>{if(!d)return;dict=d;$('mic').hidden=false;d.onFinal(({text})=>{const t=$('ta');t.value+=(t.value&&!/\s$/.test(t.value)?' ':'')+text;t.dispatchEvent(new Event('input'))});d.onState(({state})=>{$('mic').classList.toggle('rec',state==='listening');$('mic').setAttribute('aria-pressed',state==='listening')})}).catch(()=>{})}catch(e){}
-$('mic').onclick=()=>{if(dict)$('mic').classList.contains('rec')?dict.stop():dict.start().catch(()=>toast('Microphone unavailable'))};
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const mic = $('mic');
+const voiceStatus = $('voiceStatus');
+let activeRecognition = null;
+
+function showVoiceState(active, message) {
+  mic.classList.toggle('rec', active);
+  mic.setAttribute('aria-pressed', String(active));
+  mic.title = active ? 'Stop voice typing' : 'Start voice typing';
+  mic.setAttribute('aria-label', mic.title);
+  voiceStatus.textContent = message;
+}
+
+function cancelVoice() {
+  const recognition = activeRecognition;
+  activeRecognition = null;
+  if (recognition) recognition.abort();
+  showVoiceState(false, '');
+}
+
+mic.onclick = () => {
+  if (activeRecognition) {
+    activeRecognition.stop();
+    return;
+  }
+  if (!SpeechRecognition) {
+    showVoiceState(false, 'For voice typing, use your keyboard’s microphone or open this chat in a browser with speech recognition, such as Chrome.');
+    $('ta').focus();
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = navigator.language || document.documentElement.lang;
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  let nextFinal = 0;
+  let receivedText = false;
+  activeRecognition = recognition;
+  showVoiceState(true, 'Starting microphone…');
+  recognition.onstart = () => {
+    if (recognition === activeRecognition) showVoiceState(true, 'Listening… Tap the microphone to stop.');
+  };
+  recognition.onresult = ({ results }) => {
+    if (recognition !== activeRecognition) return;
+    const draft = $('ta');
+    const interim = [];
+    for (let i = nextFinal; i < results.length; i++) {
+      const words = results[i][0].transcript.trim();
+      if (results[i].isFinal) {
+        nextFinal = i + 1;
+        if (!words) continue;
+        draft.value += (draft.value && !/\s$/.test(draft.value) ? ' ' : '') + words;
+        draft.dispatchEvent(new Event('input'));
+        receivedText = true;
+      } else {
+        interim.push(words);
+      }
+    }
+    voiceStatus.textContent = interim.join(' ') || 'Listening… Tap the microphone to stop.';
+  };
+  recognition.onerror = ({ error }) => {
+    if (recognition !== activeRecognition) return;
+    activeRecognition = null;
+    const messages = {
+      'not-allowed': 'Allow microphone access for this site in your browser, then tap the microphone again.',
+      'service-not-allowed': 'Voice typing is blocked by your browser. Try your keyboard’s microphone.',
+      'audio-capture': 'Check that a microphone is connected and available, then try again.',
+      'network': 'The browser’s speech service could not connect. Check your connection and try again.',
+      'no-speech': 'No speech detected. Tap the microphone and try again.'
+    };
+    showVoiceState(false, messages[error] || 'Voice typing stopped. Tap the microphone to try again.');
+  };
+  recognition.onend = () => {
+    if (recognition !== activeRecognition) return;
+    activeRecognition = null;
+    showVoiceState(false, receivedText ? '' : 'No speech captured. Tap the microphone to try again.');
+  };
+  try {
+    recognition.start();
+  } catch {
+    activeRecognition = null;
+    showVoiceState(false, 'Could not start voice typing. Check your microphone and browser permissions.');
+  }
+};
+window.addEventListener('pagehide', cancelVoice);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && activeRecognition) cancelVoice();
+});
 
 setBusy(false);renderPending();renderChat();
 </script>
