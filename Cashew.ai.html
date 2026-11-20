@@ -115,6 +115,7 @@ textarea::placeholder{color:var(--mute)}
 @media(max-width:760px){aside{position:fixed;z-index:20;inset:0 auto 0 0;margin-left:-290px;box-shadow:var(--sh)}aside.open{margin-left:0}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@13.2.2/dist/bundle/index.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
 <body>
@@ -125,6 +126,7 @@ textarea::placeholder{color:var(--mute)}
   <button class="new" id="newBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New chat</button>
   <input class="srch" id="srch" type="search" placeholder="Search chats" aria-label="Search chats">
   <div class="hist"><small>Recent</small><div id="hist"></div></div>
+  <button id="addPasskey" type="button" hidden>Add a passkey</button>
   <div class="acct" id="acct" hidden><div class="av2" id="av2" aria-hidden="true"></div><div class="who"><b id="wn"></b><small id="we"></small></div><button class="ico" id="out" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button></div>
   <div class="foot"><button id="theme">Switch theme</button><button id="clear">Clear all</button></div>
 </aside>
@@ -146,15 +148,18 @@ textarea::placeholder{color:var(--mute)}
 <button class="jump" id="jump" hidden aria-label="Scroll to latest message"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
 </main>
 </div>
-<div class="gate" id="auth" role="dialog" aria-modal="true" aria-labelledby="atitle"><div class="card"><div class="logo"><svg aria-hidden="true"><use href="#cashew"/></svg></div><h2 id="atitle">Welcome to Cashew.ai</h2><p>Sign in or create an account with your email.</p>
-<form id="af"><div class="fld"><label for="em">Email</label><input id="em" type="email" autocomplete="email" inputmode="email" required placeholder="you@example.com"></div>
-<div class="fmsg" id="amsg" role="alert"></div><button class="pbtn" id="asub2" type="submit">Send sign-in email</button></form>
+<div class="gate" id="auth" role="dialog" aria-modal="true" aria-labelledby="atitle"><div class="card"><div class="logo"><svg aria-hidden="true"><use href="#cashew"/></svg></div><h2 id="atitle">Welcome to Cashew.ai</h2><p>Enter your email to create a passkey or sign in with one you already have.</p>
+<form id="keyForm"><div class="fld"><label for="em">Email</label><input id="em" type="email" autocomplete="email" inputmode="email" required placeholder="you@example.com"></div>
+<button class="pbtn" type="submit">Continue with a passkey</button>
+<div class="fmsg" id="keyStatus" role="status"></div></form>
+<details id="legacyLogin"><summary>Already have an email-link account?</summary><p>Enter your original email above and sign in once to add a passkey to your existing chats.</p>
+<form id="af"><div class="fmsg" id="amsg" role="alert"></div><button class="pbtn" id="asub2" type="submit">Send sign-in email</button></form>
 <details id="emailVerify"><summary>I have a sign-in email</summary>
 <form id="verifyForm">
 <p>Copy the link from your latest Cashew.ai email without opening it, then paste it here. If the email shows a code, enter it instead.</p>
 <div class="fld"><label for="emailProof">Email link or code</label><input id="emailProof" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required></div>
 <div class="fmsg" id="verifyMsg" role="status"></div><button class="pbtn" type="submit">Verify and continue</button>
-</form></details></div></div>
+</form></details></details></div></div>
 <div class="gate" id="nameDlg" hidden role="dialog" aria-modal="true" aria-labelledby="ntitle"><div class="card"><div class="logo"><svg aria-hidden="true"><use href="#cashew"/></svg></div><h2 id="ntitle">One last thing</h2><p>What should we call you?</p>
 <form id="nf" novalidate><div class="fld"><label for="nm">Your name</label><input id="nm" type="text" autocomplete="name" maxlength="60" required placeholder="e.g. Abhiram"></div><div class="fmsg err" id="nerr" role="alert"></div><button class="pbtn" type="submit">Continue</button></form></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -293,6 +298,55 @@ try{claude.use('dictation').then(d=>{if(!d)return;dict=d;$('mic').hidden=false;d
 $('mic').onclick=()=>{if(dict)$('mic').classList.contains('rec')?dict.stop():dict.start().catch(()=>toast('Microphone unavailable'))};
 
 function fmsg(t,err){const e=$('amsg');e.textContent=t;e.className='fmsg'+(err?' err':'')}
+async function passkeyRequest(body, accessToken){
+  const {data,error}=await sb.functions.invoke('cashew-passkey',{
+    body, ...(accessToken?{headers:{Authorization:'Bearer '+accessToken}}:{})
+  });
+  if(error){
+    const details=await error.context?.json?.().catch(()=>null);
+    throw new Error(details?.error || 'Could not reach the passkey service. Please try again.');
+  }
+  return data;
+}
+async function usePasskey(intent,email,accessToken){
+  if(!window.SimpleWebAuthnBrowser?.browserSupportsWebAuthn())throw new Error('Use a browser and device that support passkeys.');
+  const {publicKey,ticket,action}=await passkeyRequest({step:'begin',action:intent,email},accessToken);
+  const credential=action==='register'
+    ? await SimpleWebAuthnBrowser.startRegistration({optionsJSON:publicKey})
+    : await SimpleWebAuthnBrowser.startAuthentication({optionsJSON:publicKey});
+  const result=await passkeyRequest({step:'finish',ticket,credential},accessToken);
+  if(!result.linked){
+    const {error}=await sb.auth.setSession({access_token:result.access_token,refresh_token:result.refresh_token});
+    if(error)throw error;
+  }
+}
+function keyError(error){
+  return error.name==='NotAllowedError'?'The passkey prompt was cancelled or timed out. Try again.':error.message;
+}
+$('keyForm').onsubmit=async event=>{
+  event.preventDefault();
+  const buttons=Array.from(event.currentTarget.querySelectorAll('button'));
+  if(buttons.some(button=>button.disabled))return;
+  buttons.forEach(button=>button.disabled=true);
+  $('keyStatus').textContent='Follow the passkey prompt on your device.';
+  try{
+    await usePasskey('continue',$('em').value.trim());
+    $('keyStatus').textContent='';
+  }catch(error){$('keyStatus').textContent=keyError(error)}
+  finally{buttons.forEach(button=>button.disabled=false)}
+};
+$('addPasskey').onclick=async()=>{
+  const button=$('addPasskey');
+  button.disabled=true;
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    if(!session)throw new Error('Please sign in again.');
+    await usePasskey('register',session.user.email,session.access_token);
+    button.hidden=true;
+    toast('Passkey added');
+  }catch(error){toast(keyError(error))}
+  finally{button.disabled=false}
+};
 let resendAfter=0;
 function waitToResend(seconds){
   const button=$('asub2');
@@ -309,12 +363,13 @@ $('af').onsubmit=async e=>{
   e.preventDefault();
   const button=$('asub2');
   if(button.disabled)return;
+  if(!$('em').reportValidity())return;
   const email=$('em').value.trim();
   const emailRedirectTo=location.origin+location.pathname;
   button.disabled=true;
   fmsg('Sending your sign-in link…');
   try{
-    const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:true,emailRedirectTo}});
+    const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:false,emailRedirectTo}});
     if(error?.status===429){
       const retry=error.message.match(/after (\d+) seconds?/i);
       if(retry){
@@ -378,12 +433,12 @@ $('verifyForm').onsubmit=async event=>{
   }
 };
 $('nf').onsubmit=async e=>{e.preventDefault();const n=$('nm').value.trim();if(!n){$('nerr').textContent='Please enter your name.';return}
-  const {error}=await sb.from('profiles').upsert({id:user.id,email:user.email,name:n});
+  const {error}=await sb.from('profiles').update({name:n}).eq('id',user.id);
   if(error){$('nerr').textContent='Could not save your name. Try again.';return}
   profile.name=n;$('nameDlg').hidden=true;renderAcct();renderChat();$('ta').focus()};
-function renderAcct(){const n=(profile&&profile.name)||'';$('acct').hidden=!user;if(!user)return;$('wn').textContent=n||'Welcome';$('we').textContent=user.email;$('av2').textContent=(n||user.email||'?')[0].toUpperCase()}
+function renderAcct(){const n=(profile&&profile.name)||'';$('acct').hidden=!user;$('addPasskey').hidden=!user||user.email.endsWith('@passkey.cashew.invalid');if(!user)return;$('wn').textContent=n||'Welcome';$('we').textContent=profile?.email||user.email;$('av2').textContent=(n||user.email||'?')[0].toUpperCase()}
 async function boot(session){
-  if(!session){user=null;profile=null;chats=[];cur=null;$('auth').hidden=false;$('nameDlg').hidden=true;renderAcct();renderChat();
+  if(!session){clearTimeout(saveT);user=null;profile=null;chats=[];cur=null;$('auth').hidden=false;$('nameDlg').hidden=true;renderAcct();renderChat();
     const callback=new URLSearchParams(location.hash.slice(1));
     if(callback.has('error_code')&&callback.has('error_description')){
       fmsg('This sign-in link is invalid or expired. Request a new link.',true);
@@ -392,8 +447,10 @@ async function boot(session){
     return
   }
   user=session.user;$('auth').hidden=true;fmsg('');
-  const {data}=await sb.from('profiles').select('name,chats').eq('id',user.id).maybeSingle();
-  profile={name:data&&data.name||null};chats=data&&Array.isArray(data.chats)?data.chats:[];cur=null;
+  const {data,error}=await sb.from('profiles').select('email,name,chats').eq('id',session.user.id).maybeSingle();
+  if(user?.id!==session.user.id)return;
+  if(error||!data){toast('Could not load your profile. Refresh to try again.');return}
+  profile={email:data?.email,name:data&&data.name||null};chats=data&&Array.isArray(data.chats)?data.chats:[];cur=null;
   if(!profile.name){const m=user.user_metadata||{};$('nm').value=m.full_name||m.name||'';$('nameDlg').hidden=false;$('nm').focus()}
   renderAcct();renderChat()}
 sb.auth.onAuthStateChange((ev,session)=>{if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED')return;if(session&&user&&session.user.id===user.id)return;setTimeout(()=>boot(session),0)});
