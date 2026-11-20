@@ -1,5 +1,12 @@
 import { models } from './models.js';
 
+const explanationStyle = [
+  'Answer the question directly, then explain the main idea in plain language.',
+  'For an explanatory question, aim for two or three focused paragraphs when the topic warrants it.',
+  'Use a concrete example when it helps. For equations, define the symbols and show how the formula applies.',
+  'Match the user’s requested length and format. Keep simple lookups brief.',
+].join(' ');
+
 const headers = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -65,7 +72,7 @@ export async function handleChat(req, apiKey) {
     model:model.id,
     state:messages,
     questions:{answer:{type:'noul', instructions:messages[messages.length - 1].content}},
-  } : {model:model.id, messages};
+  } : {model:model.id, messages:[{role:'system',content:explanationStyle}, ...messages]};
   try {
     const deadline = AbortSignal.timeout(115000);
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -88,8 +95,12 @@ export async function handleChat(req, apiKey) {
       const data = await response.json();
       if (model.decision) {
         const p = data?.answers?.answer?.noul;
-        if (typeof p === 'number' && p >= 0 && p <= 1)
-          return reply({model:model.id, text:'Estimated probability of yes: ' + (p * 100).toFixed(1) + '%.'});
+        if (typeof p === 'number' && p >= 0 && p <= 1) {
+          const interpretation = Math.abs(p - 0.5) < 0.05
+            ? 'The model rates yes and no about equally for this question.'
+            : `Given the question and its context, the model considers “${p > 0.5 ? 'yes' : 'no'}” the more likely answer.`;
+          return reply({model:model.id, text:`Estimated probability of yes: ${(p * 100).toFixed(1)}%.\n\n${interpretation}`});
+        }
       } else {
         const content = data?.choices?.[0]?.message?.content;
         const text = Array.isArray(content)
