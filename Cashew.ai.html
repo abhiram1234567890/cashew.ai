@@ -216,25 +216,90 @@ function renderChat(){
 }
 function bottom(){const s=$('scroll');s.scrollTop=s.scrollHeight}
 function setBusy(b){busy=b;$('send').innerHTML=b?ICON_STOP:ICON_SEND;upd()}
-function upd(){$('send').disabled=!busy&&!$('ta').value.trim()&&!pending.length}
-function renderPending(){$('atts').innerHTML=pending.map((a,i)=>attHTML(a,true,i)).join('');$('atts').style.display=pending.length?'flex':'none'}
+let readingFiles = 0;
+function upd(){$('send').disabled=!busy&&(readingFiles>0||(!$('ta').value.trim()&&!pending.length))}
+function renderPending(){
+  const hasImages = pending.some(file => file.kind === 'image');
+  for (const option of picker.options) {
+    option.disabled = hasImages && !models.find(model => model.id === option.value)?.vision;
+  }
+  if (picker.selectedOptions[0]?.disabled) {
+    const model = models.find(model => model.vision);
+    picker.value = model.id;
+    updateModelHint();
+    toast('Using ' + model.name + ' for this image.');
+  }
+  $('atts').innerHTML=pending.map((a,i)=>attHTML(a,true,i)).join('');
+  $('atts').style.display=pending.length?'flex':'none';
+  upd();
+}
+$('atts').onclick = event => {
+  const button = event.target.closest('[data-rm]');
+  if (!button) return;
+  pending.splice(Number(button.dataset.rm), 1);
+  renderPending();
+};
 function newChat(){cancelVoice();cur=null;pending=[];renderPending();renderChat();$('ta').focus();$('side').classList.remove('open')}
 
-async function addFiles(list){
-  for(const f of list){
-    if(f.size>8*1024*1024){toast(f.name+' is over 8 MB');continue}
-    if(f.type.startsWith('image/'))pending.push({name:f.name,kind:'image',blob:f,url:URL.createObjectURL(f)});
-    else{try{const t=await f.text();pending.push({name:f.name,kind:'text',text:t.slice(0,60000)})}catch(e){toast('Could not read '+f.name)}}
+async function preparePhoto(file) {
+  const image = new Image();
+  const original = URL.createObjectURL(file);
+  try {
+    image.src = original;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    for (const side of [1600, 1200, 900, 640]) {
+      const scale = Math.min(1, side / Math.max(image.naturalWidth, image.naturalHeight));
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext('2d');
+      context.fillStyle = 'white';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const url = canvas.toDataURL('image/jpeg', 0.86);
+      if (url.startsWith('data:image/jpeg;') && url.length <= 1000000)
+        return {name:file.name, kind:'image', url};
+    }
+    throw new Error();
+  } finally {
+    URL.revokeObjectURL(original);
   }
-  renderPending();upd()
+}
+
+async function addFiles(list){
+  const draft = pending;
+  readingFiles++;
+  upd();
+  try {
+    for (const file of list) {
+      if (file.size > 8*1024*1024) {toast(file.name+' is over 8 MB');continue}
+      try {
+        if (file.type.startsWith('image/')) {
+          const photo = await preparePhoto(file);
+          if (draft.filter(a => a.kind === 'image').length >= 3) {
+            toast('Attach up to three images per message.');
+            continue;
+          }
+          draft.push(photo);
+        } else {
+          draft.push({name:file.name,kind:'text',text:(await file.text()).slice(0,60000)});
+        }
+      } catch {
+        toast('Could not read '+file.name+'. For photos, try JPEG or PNG.');
+      }
+    }
+  } finally {
+    readingFiles--;
+    renderPending();
+  }
 }
 async function ask(){
   const text=$('ta').value.trim();
-  if(!text&&!pending.length)return;
+  if(readingFiles||(!text&&!pending.length))return;
   cancelVoice();
   if(!cur){cur={id:Date.now()+'',title:(text||pending[0].name).slice(0,40),msgs:[]};chats.unshift(cur)}
   const atts=pending;pending=[];renderPending();
-  cur.msgs.push({role:'user',content:text||'Please look at what I attached.',atts,files:atts});
+  cur.msgs.push({role:'user',content:text||(atts.some(a=>a.kind==='image')?'Explain what is shown in the attached image or images.':'Please look at what I attached.'),atts,files:atts});
   $('ta').value='';$('ta').style.height='auto';
   save();
   await respond()
@@ -244,18 +309,27 @@ async function respond(){
   const ai={role:'assistant',content:''};cur.msgs.push(ai);
   const el=msgEl(ai);$('feed').appendChild(el);bottom();setBusy(true);
   try{
-    const hist=cur.msgs.slice(0,-1);
+    const hist=cur.msgs.slice(-31,-1);
     const input=hist.map(m=>{
       let c=m.content;
       (m.files||[]).filter(a=>a.kind==='text').forEach(a=>{c+=`\n\n[File: ${a.name}]\n${a.text}`});
       return {role:m.role,content:c}
     });
-    const last=hist[hist.length-1];
-    if((last.files||[]).some(a=>a.kind==='image'))toast('Image input is unavailable for this chat.');
+    const imageIndex = hist.findLastIndex(m => m.atts?.some(a => a.kind === 'image'));
+    const images = imageIndex < 0 ? [] : (hist[imageIndex].files || []).filter(a => a.kind === 'image').map(a => a.url);
+    const imageQuestion = imageIndex >= 0 && imageIndex === hist.length - 1;
+    if (imageQuestion && !images.length) throw new Error('Please attach the image again. Only the conversation text is saved after a reload.');
+    const model = models.find(m => m.id === picker.value);
+    if (imageQuestion && !model.vision) throw new Error('Select an image-capable model such as GLM 5.3 FlashX and retry.');
+    const payload = {messages:input, model:model.id};
+    if (images.length && model.vision) {
+      payload.images = images;
+      payload.imageTurnsBack = hist.length - 1 - imageIndex;
+    }
     ctrl=new AbortController();
     const response=await fetch(chatUrl,{method:'POST',credentials:'omit',signal:ctrl.signal,
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:input,model:picker.value})});
+      body:JSON.stringify(payload)});
     const data=await response.json();
     if(!response.ok)throw new Error(data.error||'The chat service is unavailable');
     ai.content=data.text;

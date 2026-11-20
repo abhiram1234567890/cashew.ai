@@ -68,13 +68,15 @@ export async function handleChat(req, apiKey) {
   if (!Array.isArray(images) || images.length > 3)
     return reply({error:'Attach up to three images per message.'}, 400);
   if (images.length) {
-    if (model.decision) return reply({error:'Select a chat model for image questions.'}, 400);
+    if (!model.vision) return reply({error:'Select an image-capable model for image questions.'}, 400);
     // Only accept embedded raster images. The provider never needs to fetch a user-supplied URL.
     const jpeg = /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/;
     if (!images.every(image => typeof image === 'string' && image.length <= 1000000 && jpeg.test(image)))
       return reply({error:'Send a smaller image using the attachment button.'}, 400);
-    const last = messages.at(-1);
-    last.content = [{type:'text',text:last.content},
+    const offset = body.imageTurnsBack ?? 0;
+    const turn = Number.isInteger(offset) && offset >= 0 && messages[messages.length - 1 - offset];
+    if (turn?.role !== 'user') return reply({error:'Invalid image attachment turn.'}, 400);
+    turn.content = [{type:'text',text:turn.content},
       ...images.map(url => ({type:'image_url',image_url:{url}}))];
   }
   const key = apiKey?.trim();
